@@ -14,6 +14,9 @@ func resourceConsulACLToken() *schema.Resource {
 		Read:   resourceConsulACLTokenRead,
 		Update: resourceConsulACLTokenUpdate,
 		Delete: resourceConsulACLTokenDelete,
+		Importer: &schema.ResourceImporter{
+			State: resourceConsulACLTokenImporter,
+		},
 
 		Schema: map[string]*schema.Schema{
 			"description": {
@@ -159,4 +162,42 @@ func resourceConsulACLTokenDelete(d *schema.ResourceData, meta interface{}) erro
 	log.Printf("[DEBUG] Deleted ACL token %q", id)
 
 	return nil
+}
+
+func resourceConsulACLTokenImporter(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	client := meta.(*consulapi.Client)
+
+	id := d.Id()
+	log.Printf("[DEBUG] Reading ACL token %q", id)
+
+	aclToken, _, err := client.ACL().TokenRead(id, nil)
+
+	if err != nil {
+		log.Printf("[WARN] ACL token not found, removing from state")
+		d.SetId("")
+		return nil, err
+	}
+
+	if err = d.Set("description", aclToken.Description); err != nil {
+		return nil, fmt.Errorf("Error while setting 'description': %s", err)
+	}
+
+	policies := make([]string, 0, len(aclToken.Policies))
+	for _, policyLink := range aclToken.Policies {
+		policies = append(policies, policyLink.Name)
+	}
+
+	if err = d.Set("policies", policies); err != nil {
+		return nil, fmt.Errorf("Error while setting 'policies': %s", err)
+	}
+
+	if err = d.Set("local", aclToken.Local); err != nil {
+		return nil, fmt.Errorf("Error while setting 'local': %s", err)
+	}
+
+	if err = d.Set("secret_id", aclToken.SecretID); err != nil {
+		return nil, fmt.Errorf("Error while setting 'secret_id': %s", err)
+	}
+
+	return []*schema.ResourceData{d}, nil
 }
