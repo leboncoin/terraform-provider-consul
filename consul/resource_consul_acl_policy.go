@@ -14,6 +14,9 @@ func resourceConsulACLPolicy() *schema.Resource {
 		Read:   resourceConsulACLPolicyRead,
 		Update: resourceConsulACLPolicyUpdate,
 		Delete: resourceConsulACLPolicyDelete,
+		Importer: &schema.ResourceImporter{
+			State: resourceConsulACLPolicyImporter,
+		},
 
 		Schema: map[string]*schema.Schema{
 			"name": {
@@ -154,4 +157,42 @@ func resourceConsulACLPolicyDelete(d *schema.ResourceData, meta interface{}) err
 	log.Printf("[DEBUG] Deleted ACL policy %q", id)
 
 	return nil
+}
+
+func resourceConsulACLPolicyImporter(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	client := meta.(*consulapi.Client)
+
+	id := d.Id()
+	log.Printf("[DEBUG] Reading ACL policy %q", id)
+
+	aclPolicy, _, err := client.ACL().PolicyRead(id, nil)
+
+	if err != nil {
+		log.Printf("[WARN] ACL policy not found, removing from state")
+		d.SetId("")
+		return nil, err
+	}
+
+	log.Printf("[DEBUG] Read ACL policy %q", id)
+
+	if err = d.Set("name", aclPolicy.Name); err != nil {
+		return nil, fmt.Errorf("Error while setting 'name': %s", err)
+	}
+	if err = d.Set("description", aclPolicy.Description); err != nil {
+		return nil, fmt.Errorf("Error while setting 'description': %s", err)
+	}
+	if err = d.Set("rules", aclPolicy.Rules); err != nil {
+		return nil, fmt.Errorf("Error while setting 'rules': %s", err)
+	}
+
+	datacenters := make([]string, 0, len(aclPolicy.Datacenters))
+	for _, datacenter := range aclPolicy.Datacenters {
+		datacenters = append(datacenters, datacenter)
+	}
+
+	if err = d.Set("datacenters", datacenters); err != nil {
+		return nil, fmt.Errorf("Error while setting 'datacenters': %s", err)
+	}
+
+	return []*schema.ResourceData{d}, nil
 }
